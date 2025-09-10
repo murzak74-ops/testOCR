@@ -1,75 +1,51 @@
-"""Tkinter based GUI for batch document processing."""
-
-from __future__ import annotations
-
-import tkinter as tk
-from tkinter import filedialog, messagebox
-from typing import List
-
+import streamlit as st
+import pandas as pd
 from exporter import export_to_excel
-from ocr_utils import extract_text_from_file
-from parser import parse_items
+from ocr_utils import process_files
+from parser import parse_text
+import tempfile
+import os
 
+st.title("📄 OCR-приложение для товаров")
 
-class Application(tk.Frame):
-    """Simple GUI application."""
+# Загрузка нескольких файлов
+uploaded_files = st.file_uploader(
+    "Загрузите PDF или изображения (можно несколько файлов)",
+    type=["pdf", "jpg", "jpeg", "png"],
+    accept_multiple_files=True
+)
 
-    def __init__(self, master: tk.Tk | None = None):
-        super().__init__(master)
-        self.master = master
-        self.pack()
-        self.files: List[str] = []
-        self.items = []
-        self.create_widgets()
+if uploaded_files:
+    all_rows = []
 
-    def create_widgets(self) -> None:
-        self.load_btn = tk.Button(self, text="Загрузить файлы", command=self.load_files)
-        self.load_btn.pack(padx=5, pady=5)
+    for file in uploaded_files:
+        # Streamlit загружает файлы как BytesIO → нужно временно сохранить
+        with tempfile.NamedTemporaryFile(delete=False) as tmp:
+            tmp.write(file.read())
+            tmp_path = tmp.name
 
-        self.process_btn = tk.Button(self, text="Обработать", command=self.process_files)
-        self.process_btn.pack(padx=5, pady=5)
+        text = process_files(tmp_path)
+        rows = parse_text(text)
+        all_rows.extend(rows)
 
-        self.export_btn = tk.Button(self, text="Экспорт в Excel", command=self.export)
-        self.export_btn.pack(padx=5, pady=5)
+        # Удаляем временный файл
+        os.remove(tmp_path)
 
-        self.file_list = tk.Listbox(self, width=50)
-        self.file_list.pack(padx=5, pady=5)
+    if all_rows:
+        df = pd.DataFrame(all_rows, columns=["Артикул", "Наименование", "Количество"])
+        st.success("✅ Данные распознаны")
+        st.dataframe(df)
 
-    def load_files(self) -> None:
-        paths = filedialog.askopenfilenames(
-            title="Выберите файлы",
-            filetypes=[
-                ("Изображения и PDF", "*.png *.jpg *.jpeg *.tif *.tiff *.pdf"),
-                ("Все файлы", "*.*"),
-            ],
-        )
-        if paths:
-            self.files = list(paths)
-            self.file_list.delete(0, tk.END)
-            for p in self.files:
-                self.file_list.insert(tk.END, p)
+        # Экспорт в Excel
+        if st.button("Сохранить в Excel"):
+            export_to_excel(all_rows, "result.xlsx")
+            with open("result.xlsx", "rb") as f:
+                st.download_button(
+                    "📥 Скачать result.xlsx",
+                    f,
+                    file_name="result.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+    else:
+        st.warning("⚠️ Не удалось извлечь данные")
 
-    def process_files(self) -> None:
-        self.items = []
-        for path in self.files:
-            text = extract_text_from_file(path)
-            self.items.extend(parse_items(text))
-        messagebox.showinfo("Готово", f"Обработано позиций: {len(self.items)}")
-
-    def export(self) -> None:
-        if not self.items:
-            messagebox.showwarning("Нет данных", "Сначала обработайте файлы.")
-            return
-        filename = filedialog.asksaveasfilename(
-            defaultextension=".xlsx", filetypes=[("Excel", "*.xlsx")]
-        )
-        if filename:
-            export_to_excel(self.items, filename)
-            messagebox.showinfo("Сохранено", f"Файл сохранён: {filename}")
-
-
-def run_app() -> None:
-    root = tk.Tk()
-    root.title("Распознавание документов")
-    app = Application(master=root)
-    app.mainloop()
