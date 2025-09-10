@@ -8,7 +8,6 @@ import os
 
 st.title("📄 OCR-приложение для товаров")
 
-# Загрузка файлов
 uploaded_files = st.file_uploader(
     "Загрузите PDF или изображения (можно несколько файлов)",
     type=["pdf", "jpg", "jpeg", "png"],
@@ -17,25 +16,31 @@ uploaded_files = st.file_uploader(
 
 if uploaded_files:
     all_rows = []
+    raw_texts = []
 
     for file in uploaded_files:
-        # Сохраняем временный файл для OCR
         with tempfile.NamedTemporaryFile(delete=False) as tmp:
             tmp.write(file.read())
             tmp_path = tmp.name
 
         text = process_files(tmp_path)
+        raw_texts.append((file.name, text))
         rows = parse_text(text)
         all_rows.extend(rows)
 
-        os.remove(tmp_path)  # удаляем временный файл
+        os.remove(tmp_path)
+
+    # Показываем сырое распознанное содержимое
+    with st.expander("🔍 Распознанный текст"):
+        for fname, text in raw_texts:
+            st.subheader(fname)
+            st.text_area("Текст", text, height=200)
 
     if all_rows:
         df = pd.DataFrame(all_rows, columns=["Артикул", "Наименование", "Количество"])
         st.success("✅ Данные распознаны")
         st.dataframe(df)
 
-        # Экспорт в Excel
         export_to_excel(all_rows, "result.xlsx")
         with open("result.xlsx", "rb") as f:
             st.download_button(
