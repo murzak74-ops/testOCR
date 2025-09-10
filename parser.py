@@ -2,26 +2,33 @@ import re
 
 def parse_text(text: str):
     rows = []
-    lines = text.splitlines()
 
-    for line in lines:
-        line = line.strip()
+    # Разделяем текст на кандидатов: по переводам строк и по "шт"
+    candidates = re.split(r"(?:\n|шт[.,]?\s)", text, flags=re.IGNORECASE)
+
+    for c in candidates:
+        line = c.strip()
         if not line:
             continue
 
-        # Разделяем по табам или 2+ пробелам
-        parts = re.split(r"\s{2,}|\t", line)
+        parts = line.split()
 
-        if len(parts) >= 3:
+        # Ищем количество в конце (число)
+        qty = ""
+        if parts and re.match(r"^\d+$", parts[-1]):
+            qty = parts[-1]
+            parts = parts[:-1]
+
+        # Ищем артикул (первое «похожее на код» слово: буквы+цифры)
+        article = ""
+        if parts and re.match(r"^[A-ZА-Я0-9-]+$", parts[0], flags=re.IGNORECASE):
             article = parts[0]
-            qty = parts[-1] if parts[-1].isdigit() else ""
-            name = " ".join(parts[1:-1]) if qty else " ".join(parts[1:])
+            parts = parts[1:]
+
+        # Остальное считаем наименованием
+        name = " ".join(parts)
+
+        if article or name or qty:
             rows.append([article, name.strip(), qty])
-        elif len(parts) == 2:
-            # Например: "12345   Товар без количества"
-            rows.append([parts[0], parts[1], ""])
-        else:
-            # Сохраняем хотя бы строку как «Наименование»
-            rows.append(["", line, ""])
 
     return rows
